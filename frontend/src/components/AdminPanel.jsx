@@ -18,6 +18,7 @@ import {
   Chip,
   Divider
 } from '@mui/material';
+import RefreshIcon from '@mui/icons-material/Refresh';
 import { useBlockchain } from '../context/BlockchainContext';
 import { useNavigate } from 'react-router-dom';
 
@@ -29,11 +30,13 @@ export default function AdminPanel() {
     contract,
     electionInfo,
     candidates,
+    registeredVoters,
     registerVoter,
     addCandidate,
     startVoting,
     endVoting,
-    refreshData
+    refreshData,
+    fetchRegisteredVoters
   } = useBlockchain();
 
   // State for new candidate
@@ -63,6 +66,13 @@ export default function AdminPanel() {
       navigate('/');
     }
   }, [account, isAdmin, navigate]);
+
+  // Fetch registered voters on component mount
+  useEffect(() => {
+    if (isAdmin) {
+      fetchRegisteredVoters();
+    }
+  }, [isAdmin, fetchRegisteredVoters]);
 
   // Handle closing snackbar
   const handleCloseSnackbar = () => {
@@ -134,6 +144,7 @@ export default function AdminPanel() {
           severity: 'success'
         });
         setVoterAddress('');
+        await fetchRegisteredVoters(); // Refresh registered voters list
       }
     } catch (err) {
       setSnackbar({
@@ -274,6 +285,38 @@ export default function AdminPanel() {
         </Grid>
       </Paper>
 
+      {/* Election Statistics */}
+      <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
+        <Typography variant="h6" gutterBottom>
+          Election Summary
+        </Typography>
+        
+        <Grid container spacing={3}>
+          <Grid item xs={12} sm={4}>
+            <Paper elevation={1} sx={{ p: 2, bgcolor: 'primary.light', color: 'white', textAlign: 'center', height: '100%' }}>
+              <Typography variant="body2">Total Candidates</Typography>
+              <Typography variant="h4" sx={{ my: 1 }}>{candidates.length}</Typography>
+            </Paper>
+          </Grid>
+          
+          <Grid item xs={12} sm={4}>
+            <Paper elevation={1} sx={{ p: 2, bgcolor: 'secondary.light', color: 'white', textAlign: 'center', height: '100%' }}>
+              <Typography variant="body2">Registered Voters</Typography>
+              <Typography variant="h4" sx={{ my: 1 }}>{registeredVoters?.length || 0}</Typography>
+            </Paper>
+          </Grid>
+          
+          <Grid item xs={12} sm={4}>
+            <Paper elevation={1} sx={{ p: 2, bgcolor: 'success.light', color: 'white', textAlign: 'center', height: '100%' }}>
+              <Typography variant="body2">Votes Cast</Typography>
+              <Typography variant="h4" sx={{ my: 1 }}>
+                {electionInfo?.isOpen ? '...' : registeredVoters?.filter(voter => voter.hasVoted).length || 0}
+              </Typography>
+            </Paper>
+          </Grid>
+        </Grid>
+      </Paper>
+
       <Grid container spacing={3}>
         {/* Candidate Management */}
         <Grid item xs={12} md={6}>
@@ -354,45 +397,154 @@ export default function AdminPanel() {
 
       {/* Candidates List */}
       <Paper elevation={2} sx={{ p: 3, mt: 3 }}>
-        <Typography variant="h6" gutterBottom>
-          Current Candidates
-        </Typography>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+          <Typography variant="h6">
+            Current Candidates
+          </Typography>
+          <Button 
+            size="small" 
+            variant="outlined"
+            onClick={() => refreshData()}
+            startIcon={<RefreshIcon />}
+            disabled={loading}
+          >
+            Refresh
+          </Button>
+        </Box>
         
         {candidates.length === 0 ? (
           <Typography variant="body2" color="textSecondary">
             No candidates have been added yet
           </Typography>
         ) : (
-          <TableContainer>
-            <Table>
-              <TableHead>
-                <TableRow>
-                  <TableCell>ID</TableCell>
-                  <TableCell>Name</TableCell>
-                  <TableCell>Party</TableCell>
-                  <TableCell>Vote Count</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {candidates.map((candidate) => (
-                  <TableRow key={candidate.id}>
-                    <TableCell>{candidate.id}</TableCell>
-                    <TableCell>{candidate.name}</TableCell>
-                    <TableCell>{candidate.party}</TableCell>
-                    <TableCell>
-                      {electionInfo?.isOpen ? (
-                        <Typography variant="body2" color="textSecondary">
-                          Hidden during voting
-                        </Typography>
-                      ) : (
-                        candidate.voteCount
-                      )}
-                    </TableCell>
+          <>
+            <TableContainer>
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 'bold' }}>ID</TableCell>
+                    <TableCell sx={{ fontWeight: 'bold' }}>Name</TableCell>
+                    <TableCell sx={{ fontWeight: 'bold' }}>Party</TableCell>
+                    <TableCell sx={{ fontWeight: 'bold' }}>Vote Count</TableCell>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
+                </TableHead>
+                <TableBody>
+                  {candidates.map((candidate) => (
+                    <TableRow 
+                      key={candidate.id}
+                      sx={{ '&:hover': { backgroundColor: 'rgba(0, 0, 0, 0.04)' } }}
+                    >
+                      <TableCell>{candidate.id}</TableCell>
+                      <TableCell>{candidate.name}</TableCell>
+                      <TableCell>
+                        <Chip 
+                          label={candidate.party} 
+                          variant="outlined" 
+                          size="small"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        {electionInfo?.isOpen ? (
+                          <Typography variant="body2" color="textSecondary">
+                            Hidden during voting
+                          </Typography>
+                        ) : (
+                          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                            <Typography sx={{ mr: 1 }}>{candidate.voteCount}</Typography>
+                            {candidate.voteCount > 0 && (
+                              <Chip 
+                                size="small" 
+                                label={`${((candidate.voteCount / candidates.reduce((sum, c) => sum + c.voteCount, 0)) * 100).toFixed(1)}%`} 
+                                color="primary" 
+                                variant="outlined"
+                              />
+                            )}
+                          </Box>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+            <Typography variant="body2" color="textSecondary" sx={{ mt: 1 }}>
+              Total Candidates: {candidates.length}
+            </Typography>
+          </>
+        )}
+      </Paper>
+
+      {/* Registered Voters List */}
+      <Paper elevation={2} sx={{ p: 3, mt: 3 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+          <Typography variant="h6">
+            Registered Voters
+          </Typography>
+          <Button 
+            size="small" 
+            variant="outlined"
+            onClick={() => fetchRegisteredVoters()}
+            startIcon={<RefreshIcon />}
+          >
+            Refresh
+          </Button>
+        </Box>
+        
+        {registeredVoters?.length === 0 ? (
+          <Typography variant="body2" color="textSecondary">
+            No voters have been registered yet
+          </Typography>
+        ) : (
+          <>
+            <TableContainer>
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 'bold' }}>Address</TableCell>
+                    <TableCell sx={{ fontWeight: 'bold' }}>Status</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {registeredVoters.map((voter, index) => (
+                    <TableRow 
+                      key={index}
+                      sx={{ 
+                        backgroundColor: voter.address === account ? 'rgba(25, 118, 210, 0.08)' : 'inherit',
+                        '&:hover': { backgroundColor: 'rgba(0, 0, 0, 0.04)' },
+                      }}
+                    >
+                      <TableCell>
+                        {voter.address === account ? (
+                          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                            {voter.address}
+                            <Chip 
+                              label="You" 
+                              color="primary" 
+                              variant="outlined" 
+                              size="small" 
+                              sx={{ ml: 1, height: 20 }} 
+                            />
+                          </Box>
+                        ) : (
+                          voter.address
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {voter.hasVoted ? (
+                          <Chip color="primary" label="Voted" size="small" />
+                        ) : (
+                          <Chip color="default" label="Not Voted" size="small" />
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+            <Typography variant="body2" color="textSecondary" sx={{ mt: 1 }}>
+              Total Registered Voters: {registeredVoters.length}
+            </Typography>
+          </>
         )}
       </Paper>
 

@@ -148,6 +148,8 @@ export default function BlockchainProvider({ children }) {
     candidateId: 0,
   });
   const [candidates, setCandidates] = useState([]);
+  // Add state for registered voters
+  const [registeredVoters, setRegisteredVoters] = useState([]);
 
   // Contract address will be set after deployment
   // For development, we'll need to update this with the deployed address
@@ -265,6 +267,11 @@ export default function BlockchainProvider({ children }) {
       // Get mock candidates
       await fetchCandidates(mockContract);
       
+      // Fetch registered voters if admin
+      if (isAdmin) {
+        await fetchRegisteredVoters();
+      }
+      
       setError('');
     } catch (err) {
       console.error('Error connecting to contract:', err);
@@ -333,6 +340,11 @@ export default function BlockchainProvider({ children }) {
 
         // Refresh candidates
         await fetchCandidates();
+        
+        // Refresh registered voters if admin
+        if (isAdmin) {
+          await fetchRegisteredVoters();
+        }
       } catch (err) {
         console.error('Error refreshing data:', err);
         setError(`Error refreshing data: ${err.message}`);
@@ -371,6 +383,9 @@ export default function BlockchainProvider({ children }) {
           isRegistered: true,
         });
       }
+      
+      // Update registered voters list
+      await fetchRegisteredVoters();
       
       return true;
     } catch (err) {
@@ -446,6 +461,33 @@ export default function BlockchainProvider({ children }) {
     }
   };
 
+  // Function to fetch registered voters
+  const fetchRegisteredVoters = async () => {
+    if (!contract || !isAdmin) return [];
+    
+    try {
+      // Since Solidity doesn't provide a direct way to get all registered voters,
+      // in a real app we'd use events or a separate function in the contract.
+      // For this demo, we'll use mock data
+      
+      // Mock data for demo purposes
+      const mockRegisteredVoters = [
+        { address: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8", hasVoted: true },
+        { address: "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC", hasVoted: false },
+        { address: "0x90F79bf6EB2c4f870365E785982E1f101E93b906", hasVoted: true },
+        { address: "0x15d34AAf54267DB7D7c367839AAf71A00a2C6A65", hasVoted: false },
+        { address: account, hasVoted: voter.hasVoted }
+      ];
+      
+      setRegisteredVoters(mockRegisteredVoters);
+      return mockRegisteredVoters;
+    } catch (err) {
+      console.error('Error fetching registered voters:', err);
+      setError(`Error fetching registered voters: ${err.message}`);
+      return [];
+    }
+  };
+
   const setDeployedContractAddress = async (address) => {
     setContractAddress(address);
     if (provider && signer) {
@@ -513,6 +555,7 @@ export default function BlockchainProvider({ children }) {
     electionInfo,
     voter,
     candidates,
+    registeredVoters,
     contractAddress,
     connectWallet,
     connectToContract,
@@ -524,6 +567,7 @@ export default function BlockchainProvider({ children }) {
     endVoting,
     castVote,
     getWinner,
+    fetchRegisteredVoters,
     setDeployedContractAddress,
   };
 
