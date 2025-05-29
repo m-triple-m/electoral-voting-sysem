@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { ethers } from 'ethers';
 
 // Hardcoded ABI for when artifacts aren't available
@@ -191,17 +191,49 @@ export default function BlockchainProvider({ children }) {
       setError(err.message || 'Error connecting to wallet');
       setLoading(false);
     }
-  };
-  const connectToContract = async (provider, signer, address) => {
+  };  const connectToContract = async (provider, signer, address) => {
     try {
       if (!address) return;
+        // Create mock contract with relevant methods for development purposes
+      // Add state management for voting
+      let votingState = {
+        isOpen: false,
+        startTime: 0,
+        endTime: 0,
+        remainingTime: 0
+      };
       
-      // Create mock contract with relevant methods for development purposes
+      // Track voter states
+      let voterStates = {};
+      
       const mockContract = {
         admin: async () => account,
-        electionName: async () => "Mock Election 2025",
-        getVotingStatus: async () => [false, 0, 0, 0],
-        getVoterStatus: async () => [true, false, 0],
+        electionName: async () => "Mock Election 2025",        getVotingStatus: async () => {
+          // Update remaining time if voting is open
+          if (votingState.isOpen) {
+            const now = Math.floor(Date.now() / 1000);
+            const remaining = Math.max(0, votingState.endTime - now);
+            votingState.remainingTime = remaining;
+            
+            // Auto-close voting if time is up
+            if (remaining <= 0) {
+              votingState.isOpen = false;
+              votingState.remainingTime = 0;
+            }
+          }
+          
+          return [
+            votingState.isOpen, 
+            votingState.startTime, 
+            votingState.endTime, 
+            votingState.remainingTime
+          ];
+        },
+        getVoterStatus: async (address) => {
+          const voterAddress = address || account;
+          const voterState = voterStates[voterAddress] || { isRegistered: true, hasVoted: false, candidateId: 0 };
+          return [voterState.isRegistered, voterState.hasVoted, voterState.candidateId];
+        },
         getCandidatesCount: async () => 3,
         getCandidate: async (id) => {
           const mockCandidates = [
@@ -210,26 +242,50 @@ export default function BlockchainProvider({ children }) {
             [2, "Robert Johnson", "Party C", "Security and growth", 0]
           ];
           return mockCandidates[id % 3];
-        },
-        addCandidate: async (name, party, manifesto) => {
-          console.log(`Mock: Added candidate ${name} from ${party}`);
+        },        addCandidate: async (name, party, manifesto) => {
+          console.log(`Mock: Added candidate ${name} from ${party} with manifesto: ${manifesto}`);
           // No actual blockchain interaction, just log and return a mock transaction
           return { wait: async () => true };
-        },
-        registerVoter: async (voter) => {
-          console.log(`Mock: Registered voter ${voter}`);
+        },        registerVoter: async (voterAddress) => {
+          console.log(`Mock: Registered voter ${voterAddress}`);
+          // Initialize voter state
+          voterStates[voterAddress] = {
+            isRegistered: true,
+            hasVoted: false,
+            candidateId: 0
+          };
           return { wait: async () => true };
         },
         startVoting: async (duration) => {
           console.log(`Mock: Started voting for ${duration} minutes`);
+          // Update voting state
+          const now = Math.floor(Date.now() / 1000);
+          const endTime = now + (duration * 60); // Convert minutes to seconds
+          votingState = {
+            isOpen: true,
+            startTime: now,
+            endTime: endTime,
+            remainingTime: duration * 60
+          };
           return { wait: async () => true };
         },
         endVoting: async () => {
           console.log(`Mock: Ended voting`);
+          // Update voting state
+          votingState = {
+            ...votingState,
+            isOpen: false,
+            remainingTime: 0
+          };
           return { wait: async () => true };
-        },
-        vote: async (candidateId) => {
+        },        vote: async (candidateId) => {
           console.log(`Mock: Voted for candidate ${candidateId}`);
+          // Update voter state
+          voterStates[account] = {
+            isRegistered: true,
+            hasVoted: true,
+            candidateId: candidateId
+          };
           return { wait: async () => true };
         },
         getWinner: async () => [0, "John Doe", 5]
@@ -245,14 +301,14 @@ export default function BlockchainProvider({ children }) {
       
       // Set mock voting status
       const [isOpen, startTime, endTime, remainingTime] = await mockContract.getVotingStatus();
-      
-      setElectionInfo({
+        setElectionInfo(prev => ({
+        ...prev,
         name,
         isOpen,
         startTime: Number(startTime),
         endTime: Number(endTime),
         remainingTime: Number(remainingTime),
-      });
+      }));
 
       // Set mock voter information
       if (account) {
@@ -318,17 +374,15 @@ export default function BlockchainProvider({ children }) {
 
   const refreshData = async () => {
     if (contract && account) {
-      try {
-        // Refresh voting status
+      try {        // Refresh voting status
         const [isOpen, startTime, endTime, remainingTime] = await contract.getVotingStatus();
-        
-        setElectionInfo({
-          ...electionInfo,
+          setElectionInfo(prev => ({
+          ...prev,
           isOpen,
           startTime: Number(startTime),
           endTime: Number(endTime),
           remainingTime: Number(remainingTime),
-        });
+        }));
 
         // Refresh voter information
         const [isRegistered, hasVoted, candidateId] = await contract.getVoterStatus(account);
@@ -459,10 +513,8 @@ export default function BlockchainProvider({ children }) {
       setError(`Error getting winner: ${err.message}`);
       return null;
     }
-  };
-
-  // Function to fetch registered voters
-  const fetchRegisteredVoters = async () => {
+  };  // Function to fetch registered voters
+  const fetchRegisteredVoters = useCallback(async () => {
     if (!contract || !isAdmin) return [];
     
     try {
@@ -470,13 +522,16 @@ export default function BlockchainProvider({ children }) {
       // in a real app we'd use events or a separate function in the contract.
       // For this demo, we'll use mock data
       
+      // Get current voter status to avoid dependency issues
+      const [, currentVoterHasVoted] = await contract.getVoterStatus(account);
+      
       // Mock data for demo purposes
       const mockRegisteredVoters = [
         { address: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8", hasVoted: true },
         { address: "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC", hasVoted: false },
         { address: "0x90F79bf6EB2c4f870365E785982E1f101E93b906", hasVoted: true },
         { address: "0x15d34AAf54267DB7D7c367839AAf71A00a2C6A65", hasVoted: false },
-        { address: account, hasVoted: voter.hasVoted }
+        { address: account, hasVoted: currentVoterHasVoted }
       ];
       
       setRegisteredVoters(mockRegisteredVoters);
@@ -486,7 +541,7 @@ export default function BlockchainProvider({ children }) {
       setError(`Error fetching registered voters: ${err.message}`);
       return [];
     }
-  };
+  }, [contract, isAdmin, account]);
 
   const setDeployedContractAddress = async (address) => {
     setContractAddress(address);

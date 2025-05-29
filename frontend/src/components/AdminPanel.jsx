@@ -23,11 +23,9 @@ import { useBlockchain } from '../context/BlockchainContext';
 import { useNavigate } from 'react-router-dom';
 
 export default function AdminPanel() {
-  const navigate = useNavigate();
-  const { 
+  const navigate = useNavigate();  const { 
     isAdmin, 
     account,
-    contract,
     electionInfo,
     candidates,
     registeredVoters,
